@@ -33,7 +33,14 @@ class Reader(vcf.Reader):
         log.info('Reference: {}'.format(self.metadata.get('reference')))
 
         # Parse VEP annotation format
-        CSQ_Format = self.infos['CSQ'].desc.split(' Format: ')[1].split('|')
+        # gnomAD <= r2.0.x stores VEP annotations in INFO/CSQ, r2.1.x in INFO/vep
+        for vep_key in ('CSQ', 'vep'):
+            if vep_key in self.infos:
+                break
+        else:
+            raise KeyError('No VEP annotation field (INFO/CSQ or INFO/vep) in {}'.format(self.filename))
+        self.vep_key = vep_key
+        CSQ_Format = self.infos[vep_key].desc.split(' Format: ')[1].split('|')
         log.info('CSQ Format: {}'.format(CSQ_Format))
         self.CSQ_Format = CSQ_Format
 
@@ -53,7 +60,7 @@ class Reader(vcf.Reader):
         info_value_fields = info_header.query('num == @info_value_num').id.tolist()
         info_allele_fields = info_header.query('num == @info_allele_num').id.tolist()
         info_other_fields = set(info_header[info_header['num'].isnull()].id)
-        info_other_fields.discard('CSQ')
+        info_other_fields.discard(self.vep_key)
         log.info('INFO flags: {}'.format(str(info_flag_fields)))
         log.info('INFO value: {}'.format(str(info_value_fields)))
         log.info('INFO per allele: {}'.format(str(info_allele_fields)))
@@ -92,19 +99,18 @@ class Reader(vcf.Reader):
         """
         if fields is None:
             fields = self.CSQ_Format
-        parsed = pd.DataFrame([x.split('|') for x in record.INFO['CSQ']],
+        parsed = pd.DataFrame([x.split('|') for x in record.INFO[self.vep_key]],
                               columns=self.CSQ_Format)
         if len(fields) < len(self.CSQ_Format):
             parsed = parsed[fields]
 
         return parsed
 
-    @staticmethod
-    def get_vep_raw(record):
+    def get_vep_raw(self, record):
         """
         Retrive VEP annotation from VCF record with minimal parsing.
         """
-        return [x.split('|') for x in record.INFO['CSQ']]
+        return [x.split('|') for x in record.INFO[self.vep_key]]
 
     def tabulate_variant_effects(self, variants):
         """
