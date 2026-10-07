@@ -51,3 +51,19 @@ class TestVCFReader(TestCase):
         variants = [r for r in parser.fetch('1')]
         table = parser.vcf_row_to_table(variants, include_other_info=True)
         self.assertTrue('CLNSIG' in table['Other_INFO'].columns)
+
+    def test_vep_annotation_field(self):
+        """VEP annotations are read from INFO/vep (gnomAD r2.1.x) and INFO/CSQ (gnomAD r2.0.x and ClinVar)."""
+        for field in ('vep', 'CSQ'):
+            parser = gnomad.Reader(filename=os.path.join(os.path.dirname(__file__), 'data',
+                                                         'sample_{}_field.vcf'.format(field)))
+            self.assertEqual(parser.vep_key, field)
+            self.assertEqual(parser.CSQ_Format, ['Allele', 'Consequence', 'SYMBOL', 'ALLELE_NUM'])
+            table = parser.tabulate_variant_effects(list(parser))
+            self.assertEqual(table.Consequence.tolist(), ['missense_variant'])
+
+    def test_missing_vep_annotation_field(self):
+        """A clear KeyError is raised if the VCF has neither INFO/vep nor INFO/CSQ."""
+        with self.assertRaises(KeyError):
+            gnomad.Reader(filename=os.path.join(os.path.dirname(__file__), 'data', 'sample_no_vep_field.vcf'))
+
